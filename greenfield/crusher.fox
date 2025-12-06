@@ -1,0 +1,1051 @@
+# greenfield/crusher.fox
+# Parser untuk "Kelahiran Kembali MORPH"
+
+ambil_semua "morph_t.fox" sebagai T
+ambil_semua "lx_morph.fox" sebagai Lexer
+ambil_semua "absolute_syntax_morph.fox" sebagai AST
+ambil_semua "handler.fox" sebagai Handler
+dari "cotc(stdlib)/core.fox" ambil_sebagian tambah, panjang, tipe_objek
+
+kelas PenguraiKesalahan maka
+    fungsi inisiasi() maka
+    akhir
+akhir
+
+kelas Pengurai maka
+    fungsi inisiasi(tokens, handler) maka
+        ubah ini.tokens = tokens
+        ubah ini.saat_ini = 0
+        ubah ini.pengelola_kesalahan = handler
+        ubah ini.daftar_impor = []
+    akhir
+
+    fungsi urai() maka
+        biar daftar_pernyataan = []
+        selama tidak ini._di_akhir() maka
+            jika ini._cocok(T.AKHIR_BARIS, nil) maka
+                lanjutkan
+            akhir
+
+            biar pernyataan = ini._deklarasi()
+            jika pernyataan != nil maka
+                tambah(daftar_pernyataan, pernyataan)
+            akhir
+        akhir
+
+        jika ini.pengelola_kesalahan.ada_error maka
+            kembali nil
+        akhir
+
+        kembali AST.Bagian(daftar_pernyataan)
+    akhir
+
+    fungsi _deklarasi() maka
+        jika ini._cocok(T.PINJAM, nil) maka
+            kembali ini._pernyataan_pinjam()
+        akhir
+        jika ini._cocok(T.KELAS, nil) maka
+            kembali ini._deklarasi_kelas()
+        akhir
+        jika ini._cocok(T.AMBIL_SEMUA, nil) maka
+            kembali ini._pernyataan_ambil_semua()
+        akhir
+        jika ini._cocok(T.DARI, nil) maka
+            kembali ini._pernyataan_dari_ambil()
+        akhir
+        jika ini._cocok(T.AMBIL_SEBAGIAN, nil) maka
+            kembali ini._pernyataan_ambil_sebagian()
+        akhir
+        jika ini._cocok(T.TIPE, nil) maka
+            kembali ini._deklarasi_tipe()
+        akhir
+        jika ini._cocok(T.ASINK, nil) maka
+            kembali ini._deklarasi_fungsi_asink()
+        akhir
+        jika ini._cocok(T.FUNGSI, nil) maka
+            kembali ini._deklarasi_fungsi("fungsi")
+        akhir
+        jika ini._cocok(T.BIAR, T.TETAP) maka
+            kembali ini._deklarasi_variabel()
+        akhir
+        kembali ini._pernyataan()
+    akhir
+
+    fungsi _deklarasi_kelas() maka
+        biar nama = ini._konsumsi(T.NAMA, "Dibutuhkan nama setelah 'kelas'.")
+        biar superkelas = nil
+        jika ini._cocok(T.WARISI, nil) maka
+            biar nama_super = ini._konsumsi(T.NAMA, "Dibutuhkan nama superkelas setelah 'warisi'.")
+            ubah superkelas = AST.Identitas(nama_super, nil)
+        akhir
+        ini._konsumsi(T.MAKA, "Dibutuhkan 'maka' setelah nama kelas.")
+        ini._cocok(T.AKHIR_BARIS, nil) # Opsional
+
+        biar metode = []
+        selama tidak ini._periksa(T.AKHIR) dan tidak ini._di_akhir() maka
+            jika ini._cocok(T.AKHIR_BARIS, nil) maka
+                lanjutkan
+            akhir
+            jika ini._cocok(T.ASINK, nil) maka
+                tambah(metode, ini._deklarasi_fungsi_asink())
+            lain
+                jika ini._cocok(T.FUNGSI, nil) maka
+                    tambah(metode, ini._deklarasi_fungsi("metode"))
+                lain
+                    # Izinkan metode tanpa 'fungsi' jika perlu, atau abaikan baris kosong
+                    # Untuk sekarang kita perketat hanya fungsi
+                    ini._kesalahan(ini._intip(), "Hanya deklarasi 'fungsi' atau 'asink fungsi' yang diizinkan di dalam 'kelas'.")
+                    ini._maju()
+                akhir
+            akhir
+        akhir
+        ini._konsumsi(T.AKHIR, "Dibutuhkan 'akhir' untuk menutup 'kelas'.")
+        kembali AST.Kelas(nama, superkelas, metode, nil)
+    akhir
+
+    # Helper untuk menangani newline opsional di definisi fungsi
+    fungsi _konsumsi_newline_opsional() maka
+        jika ini._periksa(T.AKHIR_BARIS) maka
+            ini._maju()
+        akhir
+        kembali nil
+    akhir
+
+    fungsi _deklarasi_fungsi_asink() maka
+        ini._konsumsi(T.FUNGSI, "Dibutuhkan 'fungsi' setelah 'asink'.")
+        biar nama = ini._konsumsi(T.NAMA, "Dibutuhkan nama setelah 'asink fungsi'.")
+        ini._konsumsi(T.KURUNG_BUKA, "Dibutuhkan '(' setelah nama fungsi.")
+        biar parameter = []
+        jika tidak ini._periksa(T.KURUNG_TUTUP) maka
+            biar token_param = ini._konsumsi(T.NAMA, "Dibutuhkan nama parameter.")
+            tambah(parameter, T.Token(T.NAMA, token_param.nilai, token_param.baris, token_param.kolom))
+            selama ini._cocok(T.KOMA) maka
+                ubah token_param = ini._konsumsi(T.NAMA, "Dibutuhkan nama parameter.")
+                tambah(parameter, T.Token(T.NAMA, token_param.nilai, token_param.baris, token_param.kolom))
+            akhir
+        akhir
+        ini._konsumsi(T.KURUNG_TUTUP, "Dibutuhkan ')' setelah parameter.")
+        ini._konsumsi(T.MAKA, "Dibutuhkan 'maka' sebelum badan fungsi.")
+        ini._cocok(T.AKHIR_BARIS, nil) # Opsional
+
+        biar badan = ini._blok_pernyataan_hingga(T.AKHIR)
+        ini._konsumsi(T.AKHIR, "Dibutuhkan 'akhir' untuk menutup fungsi.")
+        kembali AST.FungsiAsinkDeklarasi(nama, parameter, AST.Bagian(badan), nil)
+    akhir
+
+    fungsi _deklarasi_fungsi(jenis_fungsi) maka
+        biar token_nama = ini._intip()
+        biar nama = nil
+        # Fix: Akses properti Tipe pada Token bukan via T.tipe tapi atribut objek
+        # Token T.NAMA, T.TAMBAH dll adalah konstanta integer.
+        # token_nama adalah Objek Token {tipe: ..., nilai: ...}
+
+        jika token_nama.tipe == T.NAMA atau token_nama.tipe == T.TAMBAH atau token_nama.tipe == T.KURANG atau token_nama.tipe == T.KALI atau token_nama.tipe == T.BAGI atau token_nama.tipe == T.MODULO atau token_nama.tipe == T.PANGKAT atau token_nama.tipe == T.TULIS maka
+             biar raw_nama = ini._maju()
+             ubah nama = T.Token(T.NAMA, raw_nama.nilai, raw_nama.baris, raw_nama.kolom)
+        lain
+             ubah nama = ini._konsumsi(T.NAMA, "Dibutuhkan nama setelah 'fungsi'.")
+        akhir
+        ini._konsumsi(T.KURUNG_BUKA, "Dibutuhkan '(' setelah nama fungsi.")
+        biar parameter = []
+        jika tidak ini._periksa(T.KURUNG_TUTUP) maka
+            biar token_param = ini._konsumsi(T.NAMA, "Dibutuhkan nama parameter.")
+            tambah(parameter, T.Token(T.NAMA, token_param.nilai, token_param.baris, token_param.kolom))
+            selama ini._cocok(T.KOMA) maka
+                ubah token_param = ini._konsumsi(T.NAMA, "Dibutuhkan nama parameter.")
+                tambah(parameter, T.Token(T.NAMA, token_param.nilai, token_param.baris, token_param.kolom))
+            akhir
+        akhir
+        ini._konsumsi(T.KURUNG_TUTUP, "Dibutuhkan ')' setelah parameter.")
+        ini._konsumsi(T.MAKA, "Dibutuhkan 'maka' sebelum badan fungsi.")
+        ini._cocok(T.AKHIR_BARIS, nil) # Opsional
+
+        biar badan = ini._blok_pernyataan_hingga(T.AKHIR)
+        ini._konsumsi(T.AKHIR, "Dibutuhkan 'akhir' untuk menutup fungsi.")
+        kembali AST.FungsiDeklarasi(nama, parameter, AST.Bagian(badan), nil)
+    akhir
+
+    fungsi _deklarasi_tipe() maka
+        biar nama = ini._konsumsi(T.NAMA, "Dibutuhkan nama tipe setelah kata kunci 'tipe'.")
+        ini._konsumsi(T.SAMADENGAN, "Dibutuhkan '=' setelah nama tipe.")
+        biar daftar_varian = []
+        biar nama_varian = ini._konsumsi(T.NAMA, "Dibutuhkan setidaknya satu nama varian setelah '='.")
+        biar parameter_varian = []
+        jika ini._cocok(T.KURUNG_BUKA, nil) maka
+            jika tidak ini._periksa(T.KURUNG_TUTUP) maka
+                tambah(parameter_varian, ini._konsumsi(T.NAMA, "Dibutuhkan nama parameter untuk varian."))
+                selama ini._cocok(T.KOMA, nil) maka
+                    tambah(parameter_varian, ini._konsumsi(T.NAMA, "Dibutuhkan nama parameter untuk varian."))
+                akhir
+            akhir
+            ini._konsumsi(T.KURUNG_TUTUP, "Dibutuhkan ')' setelah parameter varian.")
+        akhir
+        tambah(daftar_varian, AST.Varian(nama_varian, parameter_varian, nil))
+        selama ini._cocok(T.GARIS_PEMISAH, nil) maka
+            ubah nama_varian = ini._konsumsi(T.NAMA, "Dibutuhkan nama varian setelah '|'.")
+            ubah parameter_varian = []
+            jika ini._cocok(T.KURUNG_BUKA, nil) maka
+                jika tidak ini._periksa(T.KURUNG_TUTUP) maka
+                    tambah(parameter_varian, ini._konsumsi(T.NAMA, "Dibutuhkan nama parameter untuk varian."))
+                    selama ini._cocok(T.KOMA, nil) maka
+                        tambah(parameter_varian, ini._konsumsi(T.NAMA, "Dibutuhkan nama parameter untuk varian."))
+                    akhir
+                akhir
+                ini._konsumsi(T.KURUNG_TUTUP, "Dibutuhkan ')' setelah parameter varian.")
+            akhir
+            tambah(daftar_varian, AST.Varian(nama_varian, parameter_varian, nil))
+        akhir
+        ini._konsumsi_akhir_baris("Dibutuhkan baris baru setelah deklarasi tipe.")
+        kembali AST.TipeDeklarasi(nama, daftar_varian, nil)
+    akhir
+
+    fungsi _deklarasi_variabel() maka
+        biar jenis_deklarasi = ini._sebelumnya()
+
+        # Destructuring: biar [a, b] = ...
+        jika ini._cocok(T.SIKU_BUKA, nil) maka
+            biar nama_vars = []
+            selama benar maka
+                # Izinkan keyword tertentu sebagai nama variabel
+                biar token_nama = ini._intip()
+                jika token_nama.tipe == T.NAMA atau token_nama.tipe == T.TIPE atau token_nama.tipe == T.JENIS atau token_nama.tipe == T.AMBIL maka
+                     biar raw_nama = ini._maju()
+                     tambah(nama_vars, T.Token(T.NAMA, raw_nama.nilai, raw_nama.baris, raw_nama.kolom))
+                lain
+                     ini._kesalahan(token_nama, "Dibutuhkan nama variabel dalam destrukturisasi.")
+                     lemparkan PenguraiKesalahan()
+                akhir
+
+                jika tidak ini._cocok(T.KOMA, nil) maka
+                    berhenti
+                akhir
+            akhir
+
+            ini._konsumsi(T.SIKU_TUTUP, "Dibutuhkan ']' setelah daftar variabel.")
+
+            ini._konsumsi(T.SAMADENGAN, "Dibutuhkan '=' setelah deklarasi destructuring.")
+            biar nilai = ini._ekspresi()
+            ini._konsumsi_akhir_baris("Dibutuhkan baris baru atau titik koma setelah deklarasi variabel.")
+
+            kembali AST.DeklarasiVariabel(jenis_deklarasi, nama_vars, nilai, nil)
+        akhir
+
+        # Deklarasi Biasa
+        # Izinkan keyword tertentu sebagai nama variabel (TIPE, JENIS, AMBIL)
+        biar token_nama = ini._intip()
+        biar nama = nil
+        jika token_nama.tipe == T.NAMA atau token_nama.tipe == T.TIPE atau token_nama.tipe == T.JENIS atau token_nama.tipe == T.AMBIL maka
+             biar raw_nama = ini._maju()
+             ubah nama = T.Token(T.NAMA, raw_nama.nilai, raw_nama.baris, raw_nama.kolom)
+        lain
+             # Cek 'ini.field' (legacy support)
+             jika ini._cocok(T.INI, nil) maka
+                 ini._konsumsi(T.TITIK, "Dibutuhkan '.' setelah 'ini'.")
+                 biar nama_field = ini._konsumsi(T.NAMA, "Dibutuhkan nama field.")
+                 biar target = AST.AmbilProperti(AST.Ini(nil, nil), nama_field, nil)
+                 jika ini._cocok(T.SAMADENGAN, nil) maka
+                     biar nilai = ini._ekspresi()
+                     ini._konsumsi_akhir_baris("Dibutuhkan baris baru.")
+                     kembali AST.Assignment(target, nilai, nil)
+                 lain
+                     ini._kesalahan(nama_field, "Inisialisasi field 'ini' harus memiliki nilai.")
+                     lemparkan PenguraiKesalahan()
+                 akhir
+             akhir
+             ubah nama = ini._konsumsi(T.NAMA, "Dibutuhkan nama variabel.")
+        akhir
+
+        biar nilai = nil
+        jika ini._cocok(T.SAMADENGAN, nil) maka
+            ubah nilai = ini._ekspresi()
+        akhir
+        ini._konsumsi_akhir_baris("Dibutuhkan baris baru atau titik koma setelah deklarasi variabel.")
+        kembali AST.DeklarasiVariabel(jenis_deklarasi, nama, nilai, nil)
+    akhir
+
+    fungsi _pernyataan() maka
+        jika ini._cocok(T.LEMPARKAN, nil) maka
+            kembali ini._pernyataan_lemparkan()
+        akhir
+        jika ini._cocok(T.COBA, nil) maka
+            kembali ini._pernyataan_coba()
+        akhir
+        jika ini._cocok(T.JODOHKAN, nil) maka
+            kembali ini._pernyataan_jodohkan()
+        akhir
+        jika ini._cocok(T.PILIH, nil) maka
+            kembali ini._pernyataan_pilih()
+        akhir
+        jika ini._cocok(T.JIKA, nil) maka
+            kembali ini._pernyataan_jika()
+        akhir
+        jika ini._cocok(T.SELAMA, nil) maka
+            kembali ini._pernyataan_selama()
+        akhir
+        jika ini._cocok(T.UBAH, nil) maka
+            kembali ini._pernyataan_assignment()
+        akhir
+        jika ini._cocok(T.TULIS, nil) maka
+            kembali ini._pernyataan_tulis()
+        akhir
+        jika ini._cocok(T.KEMBALI, T.KEMBALIKAN) maka
+            kembali ini._pernyataan_kembalikan()
+        akhir
+        jika ini._cocok(T.BERHENTI, nil) maka
+            kembali ini._pernyataan_berhenti()
+        akhir
+        jika ini._cocok(T.LANJUTKAN, nil) maka
+            kembali ini._pernyataan_lanjutkan()
+        akhir
+        jika ini._cocok(T.KURAWAL_BUKA, nil) maka
+            kembali AST.Bagian(ini._blok(), nil)
+        akhir
+        kembali ini._pernyataan_ekspresi()
+    akhir
+
+    fungsi _pernyataan_lemparkan() maka
+        biar ekspresi = ini._ekspresi()
+        biar tipe_lemparan = nil
+        jika ini._cocok(T.JENIS, nil) maka
+            ubah tipe_lemparan = ini._ekspresi()
+        akhir
+        ini._konsumsi_akhir_baris("Dibutuhkan baris baru setelah 'lemparkan'.")
+        kembali AST.Lemparkan(ekspresi, tipe_lemparan, nil)
+    akhir
+
+    fungsi _pernyataan_coba() maka
+        ini._konsumsi_akhir_baris("Dibutuhkan baris baru setelah 'coba'.")
+        biar blok_coba = ini._blok_pernyataan_hingga(T.TANGKAP, T.AKHIRNYA, T.AKHIR)
+        biar daftar_tangkap = []
+        selama ini._cocok(T.TANGKAP, nil) maka
+            biar nama_error = ini._konsumsi(T.NAMA, "Dibutuhkan nama variabel error.")
+            biar kondisi_jaga = nil
+            jika ini._cocok(T.JIKA, nil) maka
+                ubah kondisi_jaga = ini._ekspresi()
+            akhir
+            # Konsumsi opsional 'maka' agar konsisten dengan blok lain
+            ini._cocok(T.MAKA, nil)
+
+            ini._konsumsi_akhir_baris("Dibutuhkan baris baru setelah 'tangkap'.")
+            biar badan_tangkap = ini._blok_pernyataan_hingga(T.TANGKAP, T.AKHIRNYA, T.AKHIR)
+            tambah(daftar_tangkap, AST.Tangkap(nama_error, kondisi_jaga, AST.Bagian(badan_tangkap), nil))
+        akhir
+        biar blok_akhirnya = nil
+        jika ini._cocok(T.AKHIRNYA, nil) maka
+            ini._konsumsi_akhir_baris("Dibutuhkan baris baru setelah 'akhirnya'.")
+            biar badan_akhirnya = ini._blok_pernyataan_hingga(T.AKHIR, nil, nil)
+            ubah blok_akhirnya = AST.Bagian(badan_akhirnya)
+        akhir
+        ini._konsumsi(T.AKHIR, "Blok 'coba' harus ditutup dengan 'akhir'.")
+        kembali AST.CobaTangkap(AST.Bagian(blok_coba), daftar_tangkap, blok_akhirnya, nil)
+    akhir
+
+    fungsi _pernyataan_assignment() maka
+        biar target_expr = ini._panggilan()
+        ini._konsumsi(T.SAMADENGAN, "Dibutuhkan '=' setelah target.")
+        biar nilai = ini._ekspresi()
+        ini._konsumsi_akhir_baris("Dibutuhkan baris baru.")
+        kembali AST.Assignment(target_expr, nilai, nil)
+    akhir
+
+    fungsi _pernyataan_selama() maka
+        biar token_selama = ini._sebelumnya()
+        biar kondisi = ini._ekspresi()
+        ini._konsumsi(T.MAKA, "Dibutuhkan 'maka'.")
+        ini._cocok(T.AKHIR_BARIS, nil) # Opsional
+
+        biar badan = ini._blok_pernyataan_hingga(T.AKHIR)
+        ini._konsumsi(T.AKHIR, "Dibutuhkan 'akhir'.")
+        kembali AST.Selama(token_selama, kondisi, AST.Bagian(badan), nil)
+    akhir
+
+    fungsi _pernyataan_berhenti() maka
+        biar token = ini._sebelumnya()
+        ini._konsumsi_akhir_baris("Dibutuhkan baris baru.")
+        kembali AST.Berhenti(token, nil)
+    akhir
+
+    fungsi _pernyataan_lanjutkan() maka
+        biar token = ini._sebelumnya()
+        ini._konsumsi_akhir_baris("Dibutuhkan baris baru.")
+        kembali AST.Lanjutkan(token, nil)
+    akhir
+
+    fungsi _pernyataan_kembalikan() maka
+        biar token_kunci = ini._sebelumnya()
+        biar nilai = nil
+        jika tidak ini._periksa(T.AKHIR_BARIS) dan tidak ini._periksa(T.TITIK_KOMA) maka
+            ubah nilai = ini._ekspresi()
+        akhir
+        ini._konsumsi_akhir_baris("Dibutuhkan baris baru.")
+        kembali AST.PernyataanKembalikan(token_kunci, nilai, nil)
+    akhir
+
+    fungsi _pernyataan_tulis() maka
+        ini._konsumsi(T.KURUNG_BUKA, "Dibutuhkan '('.")
+        biar argumen = []
+        jika tidak ini._periksa(T.KURUNG_TUTUP) maka
+            tambah(argumen, ini._ekspresi())
+            selama ini._cocok(T.KOMA) maka
+                tambah(argumen, ini._ekspresi())
+            akhir
+        akhir
+        ini._konsumsi(T.KURUNG_TUTUP, "Dibutuhkan ')'.")
+        ini._konsumsi_akhir_baris("Dibutuhkan baris baru.")
+        kembali AST.Tulis(argumen, nil)
+    akhir
+
+    fungsi _pernyataan_jika() maka
+        biar kondisi = ini._ekspresi()
+        ini._konsumsi(T.MAKA, "Dibutuhkan 'maka'.")
+        ini._cocok(T.AKHIR_BARIS, nil) # Opsional
+
+        biar blok_maka = ini._blok_pernyataan_hingga(T.AKHIR, T.LAIN)
+        biar rantai_lain_jika = []
+        biar blok_lain = nil
+        selama ini._cocok(T.LAIN) maka
+            jika ini._cocok(T.JIKA) maka
+                biar kond = ini._ekspresi()
+                ini._konsumsi(T.MAKA, "Dibutuhkan 'maka'.")
+                ini._cocok(T.AKHIR_BARIS, nil) # Opsional
+
+                biar blok = ini._blok_pernyataan_hingga(T.AKHIR, T.LAIN)
+                tambah(rantai_lain_jika, [kond, AST.Bagian(blok)])
+            lain
+                ini._cocok(T.AKHIR_BARIS, nil) # Opsional
+                ubah blok_lain = AST.Bagian(ini._blok_pernyataan_hingga(T.AKHIR))
+                berhenti
+            akhir
+        akhir
+        ini._konsumsi(T.AKHIR, "Dibutuhkan 'akhir'.")
+        kembali AST.JikaMaka(kondisi, AST.Bagian(blok_maka), rantai_lain_jika, blok_lain, nil)
+    akhir
+
+    fungsi _pernyataan_pilih() maka
+        biar ekspresi = ini._ekspresi()
+        ini._cocok(T.AKHIR_BARIS, nil) # Opsional
+
+        biar daftar_kasus = []
+        biar kasus_lainnya = nil
+        selama ini._cocok(T.KETIKA, nil) maka
+            biar nilai_kasus = ini._ekspresi()
+            ini._konsumsi(T.MAKA, "Dibutuhkan 'maka'.")
+            ini._cocok(T.AKHIR_BARIS, nil) # Opsional
+
+            biar badan = ini._blok_pernyataan_hingga(T.KETIKA, T.LAINNYA, T.AKHIR)
+            tambah(daftar_kasus, AST.PilihKasus(nilai_kasus, AST.Bagian(badan), nil))
+        akhir
+        jika ini._cocok(T.LAINNYA, nil) maka
+            ini._konsumsi(T.MAKA, "Dibutuhkan 'maka'.")
+            ini._cocok(T.AKHIR_BARIS, nil) # Opsional
+
+            biar badan = ini._blok_pernyataan_hingga(T.AKHIR, nil, nil)
+            ubah kasus_lainnya = AST.KasusLainnya(AST.Bagian(badan), nil)
+        akhir
+        ini._konsumsi(T.AKHIR, "Dibutuhkan 'akhir'.")
+        kembali AST.Pilih(ekspresi, daftar_kasus, kasus_lainnya, nil)
+    akhir
+
+    fungsi _pernyataan_jodohkan() maka
+        biar ekspresi = ini._ekspresi()
+        ini._konsumsi(T.DENGAN, "Dibutuhkan 'dengan'.")
+        ini._konsumsi_akhir_baris("Dibutuhkan baris baru.")
+        biar daftar_kasus = []
+        ini._cocok(T.GARIS_PEMISAH, nil)
+        selama tidak ini._periksa(T.AKHIR) maka
+            biar pola = ini._pola()
+            biar kondisi_jaga = nil
+            jika ini._cocok(T.JAGA, nil) maka
+                ubah kondisi_jaga = ini._ekspresi()
+            akhir
+            ini._konsumsi(T.MAKA, "Dibutuhkan 'maka'.")
+            ini._konsumsi_akhir_baris("Dibutuhkan baris baru.")
+            biar badan = ini._blok_pernyataan_hingga(T.AKHIR, T.GARIS_PEMISAH, nil)
+            tambah(daftar_kasus, AST.JodohkanKasus(pola, kondisi_jaga, AST.Bagian(badan), nil))
+            jika tidak ini._cocok(T.GARIS_PEMISAH, nil) maka
+                berhenti
+            akhir
+        akhir
+        ini._konsumsi(T.AKHIR, "Dibutuhkan 'akhir'.")
+        kembali AST.Jodohkan(ekspresi, daftar_kasus, nil)
+    akhir
+    fungsi _pola() maka
+        jika ini._cocok(T.SIKU_BUKA, nil) maka
+            biar daftar_pola = []
+            biar pola_sisa = nil
+            jika tidak ini._periksa(T.SIKU_TUTUP) maka
+                selama benar maka
+                    jika ini._cocok(T.TITIK_TIGA, nil) maka
+                        ubah pola_sisa = ini._konsumsi(T.NAMA, "Dibutuhkan nama sisa.")
+                        berhenti
+                    akhir
+                    tambah(daftar_pola, ini._pola())
+                    jika tidak ini._cocok(T.KOMA, nil) maka
+                        berhenti
+                    akhir
+                akhir
+            akhir
+            ini._konsumsi(T.SIKU_TUTUP, "Dibutuhkan ']'.")
+            kembali AST.PolaDaftar(daftar_pola, pola_sisa, nil)
+        akhir
+
+        # Support Literal (Angka, Teks, Boolean, Nil) sebagai Pola
+        jika ini._cocok(T.ANGKA, T.TEKS, T.BENAR, T.SALAH) maka
+            kembali AST.PolaLiteral(ini._sebelumnya(), nil)
+        akhir
+        jika ini._cocok(T.NIL, nil) maka
+            kembali AST.PolaLiteral(ini._sebelumnya(), nil)
+        akhir
+
+        biar nama_token = ini._konsumsi(T.NAMA, "Dibutuhkan nama/literal/wildcard sebagai pola.")
+        jika nama_token.nilai == "_" maka
+            kembali AST.PolaWildcard(nama_token, nil)
+        akhir
+
+        # Support Varian(args) sebagai Pola
+        jika ini._cocok(T.KURUNG_BUKA, nil) maka
+            biar pola_argumen = []
+            jika tidak ini._periksa(T.KURUNG_TUTUP) maka
+                tambah(pola_argumen, ini._pola())
+                selama ini._cocok(T.KOMA, nil) maka
+                    tambah(pola_argumen, ini._pola())
+                akhir
+            akhir
+            ini._konsumsi(T.KURUNG_TUTUP, "Dibutuhkan ')' setelah argumen pola varian.")
+            kembali AST.PolaVarian(nama_token, pola_argumen, nil)
+        akhir
+
+        kembali AST.PolaIkatanVariabel(nama_token, nil)
+    akhir
+
+    fungsi _blok_pernyataan_hingga(t1, t2, t3) maka
+        biar daftar = []
+        selama tidak ini._di_akhir() maka
+            jika ini._periksa(t1) maka
+                berhenti
+            akhir
+            jika t2 != nil dan ini._periksa(t2) maka
+                berhenti
+            akhir
+            jika t3 != nil dan ini._periksa(t3) maka
+                berhenti
+            akhir
+            jika ini._cocok(T.AKHIR_BARIS, nil) maka
+                lanjutkan
+            akhir
+            tambah(daftar, ini._deklarasi())
+        akhir
+        kembali daftar
+    akhir
+
+    fungsi _blok() maka
+        biar daftar = []
+        selama tidak ini._periksa(T.KURAWAL_TUTUP) dan tidak ini._di_akhir() maka
+            tambah(daftar, ini._deklarasi())
+        akhir
+        ini._konsumsi(T.KURAWAL_TUTUP, "Dibutuhkan '}'.")
+        kembali daftar
+    akhir
+
+    fungsi _pernyataan_ekspresi() maka
+        biar expr = ini._ekspresi()
+        ini._konsumsi_akhir_baris("Dibutuhkan baris baru.")
+        kembali AST.PernyataanEkspresi(expr, nil)
+    akhir
+
+    fungsi _ekspresi() maka
+        # Precedence: Ternary berada di atas 'atau'
+        biar ekspresi = ini._logika_atau()
+
+        jika ini._cocok(T.TANYA, nil) maka
+            # Ternary: kondisi ? benar : salah
+            biar expr_benar = ini._ekspresi()
+            ini._konsumsi(T.TITIK_DUA, "Dibutuhkan ':' dalam operasi ternary.")
+            biar expr_salah = ini._ekspresi()
+            kembali AST.Ternary(ekspresi, expr_benar, expr_salah, nil)
+        akhir
+
+        kembali ekspresi
+    akhir
+
+    fungsi _logika_atau() maka
+        biar ekspresi = ini._logika_dan()
+        selama ini._cocok(T.ATAU) maka
+            biar op = ini._sebelumnya()
+            biar kanan = ini._logika_dan()
+            ubah ekspresi = AST.FoxBinary(ekspresi, op, kanan, nil)
+        akhir
+        kembali ekspresi
+    akhir
+
+    fungsi _logika_dan() maka
+        biar ekspresi = ini._kesetaraan()
+        selama ini._cocok(T.DAN) maka
+            biar op = ini._sebelumnya()
+            biar kanan = ini._kesetaraan()
+            ubah ekspresi = AST.FoxBinary(ekspresi, op, kanan, nil)
+        akhir
+        kembali ekspresi
+    akhir
+
+    fungsi _kesetaraan() maka
+        biar ekspresi = ini._perbandingan()
+        selama ini._cocok(T.TIDAK_SAMA, T.SAMA_DENGAN) maka
+            biar op = ini._sebelumnya()
+            biar kanan = ini._perbandingan()
+            ubah ekspresi = AST.FoxBinary(ekspresi, op, kanan, nil)
+        akhir
+        kembali ekspresi
+    akhir
+
+    fungsi _kesetaraan() maka
+        biar ekspresi = ini._perbandingan()
+        selama ini._cocok(T.TIDAK_SAMA, T.SAMA_DENGAN) maka
+            biar op = ini._sebelumnya()
+            biar kanan = ini._perbandingan()
+            ubah ekspresi = AST.FoxBinary(ekspresi, op, kanan, nil)
+        akhir
+        kembali ekspresi
+    akhir
+
+    fungsi _perbandingan() maka
+        biar ekspresi = ini._term()
+        selama ini._cocok(T.LEBIH_DARI, T.LEBIH_SAMA, T.KURANG_DARI, T.KURANG_SAMA) maka
+            biar op = ini._sebelumnya()
+            biar kanan = ini._term()
+            ubah ekspresi = AST.FoxBinary(ekspresi, op, kanan, nil)
+        akhir
+        kembali ekspresi
+    akhir
+
+    fungsi _term() maka
+        biar ekspresi = ini._faktor()
+        selama ini._cocok(T.KURANG, T.TAMBAH) maka
+            biar op = ini._sebelumnya()
+            biar kanan = ini._faktor()
+            ubah ekspresi = AST.FoxBinary(ekspresi, op, kanan, nil)
+        akhir
+        kembali ekspresi
+    akhir
+
+    fungsi _faktor() maka
+        biar ekspresi = ini._unary()
+        selama ini._cocok(T.KALI, T.BAGI, T.MODULO) maka
+            biar op = ini._sebelumnya()
+            biar kanan = ini._unary()
+            ubah ekspresi = AST.FoxBinary(ekspresi, op, kanan, nil)
+        akhir
+        kembali ekspresi
+    akhir
+
+    fungsi _unary() maka
+        jika ini._cocok(T.TIDAK, T.KURANG) maka
+            biar op = ini._sebelumnya()
+            biar kanan = ini._unary()
+            kembali AST.FoxUnary(op, kanan, nil)
+        akhir
+        kembali ini._panggilan()
+    akhir
+
+    fungsi _panggilan() maka
+        biar ekspresi = ini._primary()
+        selama benar maka
+            jika ini._cocok(T.TITIK) maka
+                # Fix: Izinkan TIPE dan KEYWORD lain sebagai nama properti
+                biar token_prop = ini._intip()
+                biar nama_prop = nil
+
+                # Izinkan identifier atau keyword umum
+                biar t = token_prop.tipe
+                jika t == T.NAMA atau t == T.TIPE atau t == T.JENIS atau t == T.AMBIL atau t == T.AMBIL_SEBAGIAN atau t == T.AMBIL_SEMUA atau t == T.UBAH atau t == T.BIAR atau t == T.FUNGSI atau t == T.KELAS atau t == T.JIKA atau t == T.MAKA atau t == T.AKHIR atau t == T.TULIS maka
+                    ini._maju()
+                    ubah nama_prop = T.Token(T.NAMA, token_prop.nilai, token_prop.baris, token_prop.kolom)
+                lain
+                    ubah nama_prop = ini._konsumsi(T.NAMA, "Dibutuhkan nama properti setelah '.'.")
+                akhir
+
+                ubah ekspresi = AST.AmbilProperti(ekspresi, nama_prop, nil)
+            lain
+                jika ini._cocok(T.KURUNG_BUKA) maka
+                    ubah ekspresi = ini._selesaikan_panggilan(ekspresi)
+                lain
+                    jika ini._cocok(T.SIKU_BUKA) maka
+                        biar indeks = ini._ekspresi()
+                        ini._konsumsi(T.SIKU_TUTUP, "Dibutuhkan ']' setelah indeks.")
+                        ubah ekspresi = AST.Akses(ekspresi, indeks, nil)
+                    lain
+                        berhenti
+                    akhir
+                akhir
+            akhir
+        akhir
+        kembali ekspresi
+    akhir
+
+    fungsi _selesaikan_panggilan(callee) maka
+        biar argumen = []
+        jika tidak ini._periksa(T.KURUNG_TUTUP) maka
+            tambah(argumen, ini._ekspresi())
+            selama ini._cocok(T.KOMA) maka
+                tambah(argumen, ini._ekspresi())
+            akhir
+        akhir
+        ini._konsumsi(T.KURUNG_TUTUP, "Dibutuhkan ')' setelah argumen.")
+        kembali AST.PanggilFungsi(callee, nil, argumen, nil)
+    akhir
+
+    fungsi _primary() maka
+        # Izinkan keyword TIPE/JENIS/AMBIL sebagai Identifier (NAMA)
+        biar token_intip = ini._intip()
+        jika token_intip.tipe == T.NAMA atau token_intip.tipe == T.TIPE atau token_intip.tipe == T.JENIS atau token_intip.tipe == T.AMBIL maka
+             ini._maju()
+             # Normalisasi ke Identitas NAMA
+             biar token_nama = T.Token(T.NAMA, token_intip.nilai, token_intip.baris, token_intip.kolom)
+             kembali AST.Identitas(token_nama, nil)
+        akhir
+
+        jika ini._cocok(T.ANGKA, nil) maka
+            kembali AST.Konstanta(ini._sebelumnya(), nil)
+        akhir
+        jika ini._cocok(T.KURUNG_BUKA, nil) maka
+            biar ekspresi = ini._ekspresi()
+            ini._konsumsi(T.KURUNG_TUTUP, "Dibutuhkan ')' setelah ekspresi.")
+            kembali AST.Pengelompokan(ekspresi, nil)
+        akhir
+        jika ini._cocok(T.INI, nil) maka
+            kembali AST.Ini(ini._sebelumnya(), nil)
+        akhir
+        jika ini._cocok(T.INDUK, nil) maka
+            biar token_induk = ini._sebelumnya()
+            ini._konsumsi(T.TITIK, "Dibutuhkan '.' setelah 'induk'.")
+            biar metode = ini._konsumsi(T.NAMA, "Dibutuhkan nama metode setelah 'induk.'.")
+            kembali AST.Induk(token_induk, metode, nil)
+        akhir
+        # Support BENAR, SALAH, NIL
+        jika ini._cocok(T.BENAR, T.SALAH, T.NIL) maka
+            kembali AST.Konstanta(ini._sebelumnya(), nil)
+        akhir
+
+        # (NAMA sudah dihandle di atas dengan normalisasi)
+
+        jika ini._cocok(T.TEKS, nil) maka
+             kembali ini._parse_interpolasi_teks(ini._sebelumnya())
+        akhir
+
+        # Penanganan List Literal: [1, 2, 3]
+        jika ini._cocok(T.SIKU_BUKA, nil) maka
+            biar elemen = []
+            jika tidak ini._periksa(T.SIKU_TUTUP) maka
+                tambah(elemen, ini._ekspresi())
+                selama ini._cocok(T.KOMA, nil) maka
+                    tambah(elemen, ini._ekspresi())
+                akhir
+            akhir
+            ini._konsumsi(T.SIKU_TUTUP, "Dibutuhkan ']' setelah elemen daftar.")
+            kembali AST.Daftar(elemen, nil)
+        akhir
+
+        # Penanganan Kamus Literal: { "k": v }
+        jika ini._cocok(T.KURAWAL_BUKA, nil) maka
+            biar pasangan = []
+            # AST.Kamus menyimpan 'pasangan' yang bisa berupa list [kunci, nilai]
+            jika tidak ini._periksa(T.KURAWAL_TUTUP) maka
+                biar kunci = ini._ekspresi()
+                ini._konsumsi(T.TITIK_DUA, "Dibutuhkan ':' setelah kunci.")
+                biar nilai = ini._ekspresi()
+                tambah(pasangan, [kunci, nilai])
+
+                selama ini._cocok(T.KOMA, nil) maka
+                    biar k = ini._ekspresi()
+                    ini._konsumsi(T.TITIK_DUA, "Dibutuhkan ':' setelah kunci.")
+                    biar v = ini._ekspresi()
+                    tambah(pasangan, [k, v])
+                akhir
+            akhir
+            ini._konsumsi(T.KURAWAL_TUTUP, "Dibutuhkan '}' setelah pasangan kamus.")
+            kembali AST.Kamus(pasangan, nil)
+        akhir
+
+        ini._kesalahan(ini._intip(), "Ekspresi tidak terduga.")
+        lemparkan PenguraiKesalahan()
+    akhir
+
+    fungsi _pernyataan_ambil_semua() maka
+        biar path = ini._konsumsi(T.TEKS, "Path.")
+        tambah(ini.daftar_impor, path) # Lacak Impor
+        biar alias = nil
+        jika ini._cocok(T.SEBAGAI, nil) maka
+            ubah alias = ini._konsumsi(T.NAMA, "Alias.")
+        akhir
+        ini._konsumsi_akhir_baris("Baris baru.")
+        kembali AST.AmbilSemua(path, alias, nil)
+    akhir
+
+    fungsi _pernyataan_ambil_sebagian() maka
+        biar simbols = []
+        tambah(simbols, ini._konsumsi(T.NAMA, "Simbol."))
+        selama ini._cocok(T.KOMA) maka
+            tambah(simbols, ini._konsumsi(T.NAMA, "Simbol."))
+        akhir
+        ini._konsumsi(T.DARI, "Dari.")
+        biar path = ini._konsumsi(T.TEKS, "Path.")
+        tambah(ini.daftar_impor, path) # Lacak Impor
+        ini._konsumsi_akhir_baris("Baris baru.")
+        kembali AST.AmbilSebagian(simbols, path, nil)
+    akhir
+
+    fungsi _pernyataan_dari_ambil() maka
+        biar path = ini._konsumsi(T.TEKS, "Path.")
+        tambah(ini.daftar_impor, path) # Lacak Impor
+        jika ini._cocok(T.AMBIL_SEBAGIAN) maka
+             biar simbols = []
+             biar token = ini._intip()
+             jika token.tipe == T.NAMA atau token.tipe == T.TULIS atau token.tipe == T.TIPE maka
+                 ini._maju()
+                 tambah(simbols, T.Token(T.NAMA, token.nilai, token.baris, token.kolom))
+             lain
+                 ini._kesalahan(token, "Dibutuhkan nama simbol.")
+             akhir
+             selama ini._cocok(T.KOMA, nil) maka
+                 ubah token = ini._intip()
+                 jika token.tipe == T.NAMA atau token.tipe == T.TULIS atau token.tipe == T.TIPE maka
+                     ini._maju()
+                     tambah(simbols, T.Token(T.NAMA, token.nilai, token.baris, token.kolom))
+                 lain
+                     ini._kesalahan(token, "Dibutuhkan nama simbol.")
+                 akhir
+             akhir
+             ini._konsumsi_akhir_baris("Baris baru.")
+             kembali AST.AmbilSebagian(simbols, path, nil)
+        akhir
+        ini._kesalahan(ini._intip(), "Setelah 'dari' path, diharapkan 'ambil_sebagian'.")
+        kembali nil
+    akhir
+
+    fungsi _pernyataan_pinjam() maka
+        biar butuh_aot = ini._cocok(T.AOT, nil)
+        biar path = ini._konsumsi(T.TEKS, "Path.")
+        biar alias = nil
+        jika ini._cocok(T.SEBAGAI, nil) maka
+            ubah alias = ini._konsumsi(T.NAMA, "Alias.")
+        akhir
+        ini._konsumsi_akhir_baris("Baris baru.")
+        kembali AST.Pinjam(path, alias, butuh_aot, nil)
+    akhir
+
+    fungsi _konsumsi(tipe_token, pesan) maka
+        jika ini._periksa(tipe_token) maka
+            kembali ini._maju()
+        akhir
+        ini._kesalahan(ini._intip(), pesan)
+        lemparkan PenguraiKesalahan()
+    akhir
+
+    fungsi _konsumsi_akhir_baris(pesan) maka
+        jika ini._cocok(T.AKHIR_BARIS, T.TITIK_KOMA) maka
+            kembali nil
+        akhir
+        jika ini._periksa(T.AKHIR) maka
+            kembali nil
+        akhir
+        jika ini._di_akhir() maka
+            kembali nil
+        akhir
+        ini._kesalahan(ini._intip(), pesan)
+        lemparkan PenguraiKesalahan()
+    akhir
+
+    fungsi _cocok(t1, t2, t3, t4) maka
+        jika ini._periksa(t1) maka
+            ini._maju()
+            kembali benar
+        akhir
+        jika t2 != nil dan ini._periksa(t2) maka
+            ini._maju()
+            kembali benar
+        akhir
+        jika t3 != nil dan ini._periksa(t3) maka
+            ini._maju()
+            kembali benar
+        akhir
+        jika t4 != nil dan ini._periksa(t4) maka
+            ini._maju()
+            kembali benar
+        akhir
+        kembali salah
+    akhir
+
+    fungsi _periksa(t1) maka
+        jika ini._di_akhir() maka
+            kembali salah
+        akhir
+        kembali ini._intip().tipe == t1
+    akhir
+
+    fungsi _maju() maka
+        jika tidak ini._di_akhir() maka
+            ubah ini.saat_ini = ini.saat_ini + 1
+        akhir
+        kembali ini._sebelumnya()
+    akhir
+
+    fungsi _di_akhir() maka
+        kembali ini._intip().tipe == T.ADS
+    akhir
+
+    fungsi _intip() maka
+        kembali ini.tokens[ini.saat_ini]
+    akhir
+
+    fungsi _sebelumnya() maka
+        kembali ini.tokens[ini.saat_ini - 1]
+    akhir
+
+    fungsi _kesalahan(token, pesan) maka
+        ini.pengelola_kesalahan.catat_manual(pesan, token.baris, token.kolom, "<parser>")
+        kembali PenguraiKesalahan()
+    akhir
+
+    fungsi _parse_interpolasi_teks(token) maka
+        # Scan manual string untuk interpolasi { ... }
+        # Strategi: Split string menjadi AST chain: "A" + (expr).teks() + "B"
+
+        biar text = token.nilai
+
+        # Cek apakah ada '{' di dalam string
+        # Kita butuh loop manual karena string.contains belum tentu ada di stdlib
+        biar ada_kurawal = salah
+        biar i = 0
+        biar pjg = panjang(text)
+        selama i < pjg maka
+            # Akses indeks string di Morph menggunakan iris? Tidak, akses indeks string didukung VM.
+            jika text[i] == "\{" maka
+                ubah ada_kurawal = benar
+                berhenti
+            akhir
+            ubah i = i + 1
+        akhir
+
+        jika tidak ada_kurawal maka
+            kembali AST.Konstanta(token, nil)
+        akhir
+
+        biar parts = []
+        ubah i = 0
+        biar buffer = ""
+
+        selama i < pjg maka
+            biar char = text[i]
+
+            jika char == "\\" maka
+                # Escaping \{
+                jika i + 1 < pjg dan text[i+1] == "\{" maka
+                    ubah buffer = buffer + "\{"
+                    ubah i = i + 2
+                    lanjutkan
+                lain
+                    ubah buffer = buffer + char
+                    ubah i = i + 1
+                akhir
+            lain
+                jika char == "\{" maka
+                    # Start Interpolation
+                    jika panjang(buffer) > 0 maka
+                        biar t_static = T.Token(T.TEKS, buffer, token.baris, token.kolom)
+                        tambah(parts, AST.Konstanta(t_static, nil))
+                        ubah buffer = ""
+                    akhir
+
+                    biar code_start = i + 1
+                    biar brace_depth = 1
+                    biar j = code_start
+                    biar in_quote = nil
+
+                    selama j < pjg dan brace_depth > 0 maka
+                        biar c = text[j]
+                        jika in_quote != nil maka
+                            jika c == "\\" maka
+                                ubah j = j + 2
+                                lanjutkan
+                            akhir
+                            jika c == in_quote maka
+                                ubah in_quote = nil
+                            akhir
+                            ubah j = j + 1
+                        lain
+                            jika c == "\"" atau c == "'" maka
+                                ubah in_quote = c
+                            lain
+                                jika c == "\{" maka
+                                    ubah brace_depth = brace_depth + 1
+                                lain
+                                    jika c == "}" maka
+                                        ubah brace_depth = brace_depth - 1
+                                    akhir
+                                akhir
+                            akhir
+                            jika brace_depth > 0 maka
+                                ubah j = j + 1
+                            akhir
+                        akhir
+                    akhir
+
+                    jika brace_depth != 0 maka
+                        ini._kesalahan(token, "Interpolasi string tidak ditutup dengan '}'.")
+                        lemparkan PenguraiKesalahan()
+                    akhir
+
+                    # Ambil code string menggunakan iris (native slice)
+                    # iris(text, code_start, j) -> text[code_start:j]
+                    dari "cotc(stdlib)/teks.fox" ambil_sebagian iris
+                    biar code_str = iris(text, code_start, j)
+
+                    # Recursive Parsing
+                    # Instantiate Lexer
+                    # API Leksikal: inisiasi(sumber, nama_file, handler)
+                    # Kita gunakan handler yang sama agar error tercatat di handler utama
+                    biar sub_lexer = Lexer.Leksikal(code_str, "<interpolasi>", ini.pengelola_kesalahan)
+
+                    # API buat_token mengembalikan List[Token], tidak mengembalikan error tuple
+                    biar sub_tokens = sub_lexer.buat_token()
+
+                    # Cek apakah ada error di handler setelah lexing?
+                    # Jika ada error baru, parser utama akan berhenti nanti.
+                    # Tapi kita perlu memastikan sub_tokens valid.
+
+                    # Instantiate Parser (Recursive)
+                    biar sub_parser = Pengurai(sub_tokens, ini.pengelola_kesalahan)
+                    biar expr = sub_parser._ekspresi()
+
+                    tambah(parts, AST.KonversiTeks(expr, nil))
+
+                    ubah i = j + 1
+                lain
+                    ubah buffer = buffer + char
+                    ubah i = i + 1
+                akhir
+            akhir
+        akhir
+
+        jika panjang(buffer) > 0 maka
+            biar t_static = T.Token(T.TEKS, buffer, token.baris, token.kolom)
+            tambah(parts, AST.Konstanta(t_static, nil))
+        akhir
+
+        jika panjang(parts) == 0 maka
+            biar t_empty = T.Token(T.TEKS, "", token.baris, token.kolom)
+            kembali AST.Konstanta(t_empty, nil)
+        akhir
+
+        # Chain parts with ADD
+        biar result = parts[0]
+        biar k = 1
+        selama k < panjang(parts) maka
+            biar op_plus = T.Token(T.TAMBAH, "+", token.baris, token.kolom)
+            ubah result = AST.FoxBinary(result, op_plus, parts[k], nil)
+            ubah k = k + 1
+        akhir
+
+        kembali result
+    akhir
+akhir

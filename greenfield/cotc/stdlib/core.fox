@@ -1,0 +1,55 @@
+# greenfield/cotc/stdlib/core.fox
+# Stub Standar Library untuk Bootstrap
+# File ini menjembatani fungsi bawaan VM (yang ada di globals) agar bisa di-import oleh compiler self-hosted.
+
+fungsi panjang(objek) maka
+    kembali _panjang_builtin(objek)
+akhir
+
+fungsi tambah(list, item) maka
+    kembali _tambah_builtin(list, item)
+akhir
+
+fungsi pop(list, index) maka
+    kembali _pop_builtin(list, index)
+akhir
+
+fungsi gabung(list, sep) maka
+    kembali _gabung_builtin(list, sep)
+akhir
+
+fungsi float(x) maka
+    kembali _float_builtin(x)
+akhir
+
+fungsi int(x) maka
+    kembali _int_builtin(x)
+akhir
+
+fungsi teks(x) maka
+    kembali _str_builtin(x)
+akhir
+
+fungsi tipe_objek(x) maka
+    kembali _tipe_objek_builtin(x)
+akhir
+
+fungsi buat_code_object(nama, instruksi, args) maka
+    kembali _buat_code_object(nama, instruksi, args)
+akhir
+
+fungsi salin_kamus(k) maka
+    kembali _salin_kamus_builtin(k)
+akhir
+
+fungsi ingat(gen) maka
+    # Placeholder
+akhir
+
+fungsi bekukan(nilai) maka
+    # Intrinsik compiler
+akhir
+
+fungsi lanjut(gen) maka
+    # Intrinsik compiler
+akhir

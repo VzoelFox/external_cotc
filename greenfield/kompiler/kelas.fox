@@ -1,0 +1,28 @@
+# greenfield/kompiler/kelas.fox
+# Modul Kelas: Kompilasi deklarasi kelas dan fungsi
+
+ambil_semua "greenfield/kompiler/generator.fox" sebagai Gen
+dari "greenfield/cotc/stdlib/core.fox" ambil_sebagian panjang, tambah, teks
+
+fungsi kunjungi_Kelas(ctx, node) maka
+    Gen.emit(ctx, ctx.Op["PUSH_CONST"], node.nama.nilai)
+    Gen.emit(ctx, ctx.Op["PUSH_CONST"], nil) # Dummy Parent
+    Gen.emit(ctx, ctx.Op["BUILD_DICT"], 0)   # Dummy Methods
+    Gen.emit(ctx, ctx.Op["BUILD_CLASS"], nil)
+
+    biar nama_kelas = node.nama.nilai
+    Gen.emit(ctx, ctx.Op["STORE_VAR"], nama_kelas)
+akhir
+
+fungsi kunjungi_FungsiDeklarasi(ctx, node) maka
+    # _emit_pembuatan_fungsi(ctx, node, salah)
+    Gen.emit(ctx, ctx.Op["PUSH_CONST"], nil) # Dummy Func
+
+    biar nama_var = node.nama.nilai
+    Gen.emit(ctx, ctx.Op["STORE_VAR"], nama_var)
+akhir
+
+fungsi _emit_pembuatan_fungsi(ctx, node, is_method) maka
+    # Placeholder
+    Gen.emit(ctx, ctx.Op["PUSH_CONST"], nil)
+akhir
