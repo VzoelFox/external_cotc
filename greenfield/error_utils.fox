@@ -1,0 +1,50 @@
+# greenfield/error_utils.fox
+# Utilitas untuk pelaporan kesalahan yang detail
+
+dari "greenfield/cotc/stdlib/core" ambil_sebagian panjang, tulis, tambah, gabung, int, teks
+ambil_semua "greenfield/cotc/warna.fox" sebagai Warna
+
+# Fungsi untuk mencetak baris kesalahan dengan indikator panah
+fungsi cetak_panah_kesalahan(sumber, baris, kolom, pesan) maka
+    # 1. Pecah sumber menjadi baris-baris
+    biar daftar_baris = sumber.split("\n")
+
+    # 2. Ambil baris yang relevan (baris dimulai dari 1)
+    jika baris < 1 atau baris > panjang(daftar_baris) maka
+        # Jika baris tidak valid, cukup cetak pesan tanpa snippet
+        tulis(Warna.merahkan("Kesalahan Umum:") + " " + pesan)
+        kembali nil
+    akhir
+
+    biar baris_kode = daftar_baris[baris - 1]
+
+    # 3. Cetak Header
+    tulis("")
+    # Gunakan teks() untuk konversi int ke string agar aman dari TypeError
+    tulis(Warna.merahkan("Kesalahan") + " di baris " + Warna.kuningkan(teks(baris)) + ", kolom " + Warna.kuningkan(teks(kolom)) + ":")
+    tulis("  " + Warna.merahkan(pesan))
+    tulis("")
+
+    # 4. Cetak Baris Kode (dengan nomor baris)
+    biar nomor_str = teks(baris) + " | "
+    tulis(Warna.cyankan(nomor_str) + baris_kode)
+
+    # 5. Buat Indikator Panah
+    # Kita perlu spasi sebanyak (panjang nomor_str + kolom - 1)
+    biar spasi_prefix = ""
+    biar i = 0
+    biar offset = panjang(nomor_str) + kolom - 1
+
+    selama i < offset maka
+        ubah spasi_prefix = spasi_prefix + " "
+        ubah i = i + 1
+    akhir
+
+    tulis(Warna.merahkan(spasi_prefix + "^--- Di sini"))
+    tulis("")
+akhir
+
+# Fungsi untuk format standar laporan kesalahan
+fungsi lapor_kesalahan_sederhana(file, baris, pesan) maka
+    tulis("[" + Warna.cyankan(file) + ":" + Warna.kuningkan(teks(baris)) + "] " + Warna.merahkan(pesan))
+akhir

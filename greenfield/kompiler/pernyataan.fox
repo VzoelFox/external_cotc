@@ -1,0 +1,75 @@
+# greenfield/kompiler/pernyataan.fox
+# Modul Pernyataan: Kompilasi node statement
+
+ambil_semua "greenfield/kompiler/generator.fox" sebagai Gen
+dari "greenfield/cotc/stdlib/core.fox" ambil_sebagian panjang, tambah, pop, teks, tipe_objek
+
+fungsi kunjungi_Bagian(ctx, node) maka
+    kembali nil
+akhir
+
+fungsi kunjungi_DeklarasiVariabel(ctx, node) maka
+    kembali nil
+akhir
+
+fungsi kunjungi_Assignment(ctx, node) maka
+    kembali nil
+akhir
+
+fungsi kunjungi_Tulis(ctx, node) maka
+    kembali nil
+akhir
+
+fungsi kunjungi_PernyataanKembalikan(ctx, node) maka
+    kembali nil
+akhir
+
+fungsi kunjungi_Lemparkan(ctx, node) maka
+    kembali nil
+akhir
+
+# === Kontrol Alur ===
+
+fungsi kunjungi_Pilih(ctx, node) maka
+    kembali nil
+akhir
+
+fungsi kunjungi_JikaMaka(ctx, node) maka
+    kembali nil
+akhir
+
+fungsi kunjungi_Selama(ctx, node) maka
+    kembali nil
+akhir
+
+fungsi kunjungi_Berhenti(ctx, node) maka
+    kembali nil
+akhir
+
+fungsi kunjungi_Lanjutkan(ctx, node) maka
+    kembali nil
+akhir
+
+# === Import ===
+
+fungsi kunjungi_AmbilSemua(ctx, node) maka
+    kembali nil
+akhir
+
+fungsi kunjungi_AmbilSebagian(ctx, node) maka
+    kembali nil
+akhir
+
+fungsi kunjungi_Pinjam(ctx, node) maka
+    kembali nil
+akhir
+
+# === Kompleks (Jodohkan & Coba) ===
+
+fungsi kunjungi_CobaTangkap(ctx, node) maka
+    kembali nil
+akhir
+
+fungsi kunjungi_Jodohkan(ctx, node) maka
+    kembali nil
+akhir

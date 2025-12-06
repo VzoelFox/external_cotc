@@ -1,0 +1,105 @@
+# greenfield/cotc/bytecode/opkode.fox
+# Definisi Konstanta Opcode untuk Morph VM
+# Disinkronkan dengan ivm/core/opcodes.py
+
+biar Op = {}
+
+# === Stack Operations ===
+ubah Op["PUSH_CONST"] = 1
+ubah Op["POP"] = 2
+ubah Op["DUP"] = 3
+
+# Arithmetic
+ubah Op["ADD"] = 4
+ubah Op["SUB"] = 5
+ubah Op["MUL"] = 6
+ubah Op["DIV"] = 7
+ubah Op["MOD"] = 8
+
+# Logic
+ubah Op["EQ"] = 9
+ubah Op["NEQ"] = 10
+ubah Op["GT"] = 11
+ubah Op["LT"] = 12
+ubah Op["GTE"] = 13
+ubah Op["LTE"] = 14
+ubah Op["NOT"] = 15
+ubah Op["AND"] = 16
+ubah Op["OR"] = 17
+
+# Registers
+ubah Op["LOAD_REG"] = 18
+ubah Op["MOVE_REG"] = 19
+ubah Op["ADD_REG"] = 20
+ubah Op["PUSH_FROM_REG"] = 21
+ubah Op["POP_TO_REG"] = 22
+
+# Variable / Memory
+ubah Op["LOAD_VAR"] = 23
+ubah Op["STORE_VAR"] = 24
+ubah Op["LOAD_LOCAL"] = 25
+ubah Op["STORE_LOCAL"] = 26
+
+# Data Structures
+ubah Op["BUILD_LIST"] = 27
+ubah Op["BUILD_DICT"] = 28
+ubah Op["LOAD_INDEX"] = 29
+ubah Op["STORE_INDEX"] = 30
+ubah Op["UNPACK_SEQUENCE"] = 31
+ubah Op["CHECK_LEN"] = 32
+ubah Op["CHECK_LEN_MIN"] = 33
+ubah Op["SNAPSHOT"] = 34
+ubah Op["RESTORE"] = 35
+ubah Op["DISCARD_SNAPSHOT"] = 36
+
+# Classes
+ubah Op["BUILD_CLASS"] = 37
+ubah Op["LOAD_ATTR"] = 38
+ubah Op["STORE_ATTR"] = 39
+ubah Op["IS_INSTANCE"] = 40
+ubah Op["IS_VARIANT"] = 41
+ubah Op["UNPACK_VARIANT"] = 42
+ubah Op["BUILD_VARIANT"] = 43
+
+# Control Flow
+ubah Op["JMP"] = 44
+ubah Op["JMP_IF_FALSE"] = 45
+ubah Op["JMP_IF_TRUE"] = 46
+
+# Functions
+ubah Op["CALL"] = 47
+ubah Op["RET"] = 48
+
+# Exception Handling
+ubah Op["PUSH_TRY"] = 49
+ubah Op["POP_TRY"] = 50
+ubah Op["THROW"] = 51
+
+# Modules
+ubah Op["IMPORT"] = 52
+ubah Op["IMPORT_NATIVE"] = 61
+ubah Op["LEN"] = 62
+ubah Op["TYPE"] = 63
+ubah Op["STR"] = 64
+ubah Op["LOAD_DEREF"] = 65
+ubah Op["STORE_DEREF"] = 66
+ubah Op["LOAD_CLOSURE"] = 67
+ubah Op["MAKE_FUNCTION"] = 68
+
+# System / IO
+ubah Op["PRINT"] = 53
+ubah Op["PRINT_RAW"] = 54
+ubah Op["HALT"] = 55
+
+# Coroutines
+ubah Op["YIELD"] = 56
+ubah Op["RESUME"] = 57
+
+# New Ops
+ubah Op["LOAD_SUPER_METHOD"] = 58
+ubah Op["SLICE"] = 59
+ubah Op["BUILD_FUNCTION"] = 60
+
+# Alias for compatibility if needed (Virtual Opcodes)
+ubah Op["LOAD_GLOBAL"] = 23 # Map to LOAD_VAR
+ubah Op["STORE_GLOBAL"] = 24 # Map to STORE_VAR

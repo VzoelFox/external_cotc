@@ -1,0 +1,28 @@
+# greenfield/fox_vm/memori.fox
+# Manajemen Memori Sederhana untuk VM
+
+dari "greenfield/cotc/stdlib/core" ambil_sebagian panjang, tambah
+
+kelas Tumpukan maka
+    fungsi inisiasi() maka
+        ubah ini.data = []
+    akhir
+
+    fungsi dorong(nilai) maka
+        tambah(ini.data, nilai)
+    akhir
+
+    fungsi angkat() maka
+        # Wrapper pop()
+        # Di StandardVM, list adalah Python list. Method pop() tersedia via LOAD_ATTR -> getattr.
+        kembali ini.data.pop()
+    akhir
+
+    fungsi intip() maka
+        biar p = panjang(ini.data)
+        jika p == 0 maka
+            kembali nil
+        akhir
+        kembali ini.data[p-1]
+    akhir
+akhir

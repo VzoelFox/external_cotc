@@ -1,0 +1,196 @@
+# greenfield/morph.fox
+# Morph CLI Toolchain (Self-Hosted Entry Point)
+
+ambil_semua "lx_morph.fox" sebagai LX
+ambil_semua "crusher.fox" sebagai CR
+ambil_semua "kompiler/utama.fox" sebagai KC
+ambil_semua "handler.fox" sebagai Handler
+dari "greenfield/cotc/io/berkas.fox" ambil_sebagian baca, baca_bytes, Sukses, Gagal
+dari "greenfield/cotc/stdlib/core.fox" ambil_sebagian teks, panjang, argumen_sistem, tambah
+dari "greenfield/cotc/stdlib/teks.fox" ambil_sebagian iris
+dari "greenfield/cotc/stdlib/loader.fox" ambil_sebagian jalan_biner
+
+kelas MorphCLI maka
+    fungsi inisiasi() maka
+        ubah ini.versi = "0.1.0 (Greenfield)"
+    akhir
+
+    fungsi jalankan() maka
+        jika panjang(argumen_sistem) < 2 maka
+            ini._tampilkan_bantuan()
+            kembali nil
+        akhir
+
+        # argumen_sistem[0] adalah nama script ini (morph.fox)
+        # argumen_sistem[1] adalah perintah (subcommand)
+        biar perintah = argumen_sistem[1]
+
+        jika perintah == "bantuan" maka
+            ini._tampilkan_bantuan()
+        lain
+            jika perintah == "build" maka
+                ini._perintah_build()
+            lain
+                jika perintah == "run" maka
+                    ini._perintah_run()
+                lain
+                    tulis("Perintah tidak dikenal: " + perintah)
+                    ini._tampilkan_bantuan()
+                akhir
+            akhir
+        akhir
+    akhir
+
+    fungsi _tampilkan_bantuan() maka
+        tulis("Morph Toolchain " + ini.versi)
+        tulis("Penggunaan:")
+        tulis("  morph.fox build <file.fox>   - Kompilasi file ke Bytecode")
+        tulis("  morph.fox run <file.fox>     - Kompilasi dan Jalankan file")
+        tulis("  morph.fox bantuan            - Tampilkan pesan ini")
+    akhir
+
+    fungsi _perintah_build() maka
+        jika panjang(argumen_sistem) < 3 maka
+            tulis("Error: Butuh path file untuk di-build.")
+            kembali nil
+        akhir
+
+        biar path_file = argumen_sistem[2]
+        tulis("[Morph] Membangun " + path_file + " ...")
+
+        biar objek_kode = ini._proses_kompilasi(path_file)
+
+        jika objek_kode != nil maka
+            tulis("[Morph] Kompilasi SUKSES.")
+
+            # Serialisasi
+            biar data_biner = objek_kode.serialisasi()
+
+            # Tulis ke file .mvm
+            # Pinjam builtins untuk 'open' binary mode
+            pinjam "builtins" sebagai py
+
+            biar nama_output = path_file + ".mvm"
+            # Jika path_file berakhiran .fox, ganti ekstensi
+            # (Simplifikasi: append .mvm dulu)
+
+            biar f = py.open(nama_output, "wb")
+            f.write(data_biner)
+            f.close()
+
+            tulis("[Morph] Output ditulis ke: " + nama_output)
+            tulis("Ukuran: " + teks(panjang(data_biner)) + " bytes")
+        akhir
+    akhir
+
+    fungsi _perintah_run() maka
+        jika panjang(argumen_sistem) < 3 maka
+            tulis("Error: Butuh path file untuk dijalankan.")
+            kembali nil
+        akhir
+
+        biar path_file = argumen_sistem[2]
+        tulis("[Morph] Menjalankan " + path_file + " ...")
+
+        # Cek apakah file .mvm
+        biar is_binary = salah
+        biar pjg_path = panjang(path_file)
+        jika pjg_path > 4 maka
+            biar ext = iris(path_file, pjg_path - 4, pjg_path)
+            jika ext == ".mvm" maka
+                ubah is_binary = benar
+            akhir
+        akhir
+
+        biar data_biner = nil
+
+        jika is_binary maka
+            biar hasil_baca = baca_bytes(path_file)
+            jodohkan hasil_baca dengan
+            | Sukses(data) maka
+                ubah data_biner = data
+            | Gagal(pesan) maka
+                tulis("[Morph] Gagal membaca binary: " + pesan)
+                kembali nil
+            akhir
+        lain
+            # Kompilasi dari source
+            biar objek_kode = ini._proses_kompilasi(path_file)
+            jika objek_kode != nil maka
+                ubah data_biner = objek_kode.serialisasi()
+            akhir
+        akhir
+
+        # Eksekusi jika data tersedia
+        jika data_biner != nil maka
+            # Siapkan argumen untuk anak
+            biar args_anak = []
+            biar i = 2
+            selama i < panjang(argumen_sistem) maka
+                tambah(args_anak, argumen_sistem[i])
+                ubah i = i + 1
+            akhir
+
+            jalan_biner(data_biner, args_anak)
+        akhir
+    akhir
+
+    fungsi _proses_kompilasi(path_file) maka
+        # 1. Baca File
+        biar hasil_baca = baca(path_file)
+
+        # Cek Hasil Varian (Manual match karena jodohkan belum di-import atau digunakan di sini)
+        # Atau gunakan properti jika Varian di-expose.
+        # Saat ini Varian Morph adalah objek. Kita bisa cek tipe.
+
+        jodohkan hasil_baca dengan
+        | Sukses(konten) maka
+            # Lanjut
+            biar handler = Handler.PengelolaKesalahan()
+
+            # 2. Lexing
+            biar lexer = LX.Leksikal(konten, path_file, handler)
+            biar tokens = lexer.buat_token()
+
+            jika handler.ada_error maka
+                tulis("[Morph] Gagal Lexing:")
+                handler.cetak_laporan(konten)
+                kembali nil
+            akhir
+
+            # 3. Parsing
+            biar parser = CR.Pengurai(tokens, handler)
+            coba
+                biar ast = parser.urai()
+                jika handler.ada_error maka
+                    tulis("[Morph] Gagal Parsing:")
+                    handler.cetak_laporan(konten)
+                    kembali nil
+                akhir
+
+                # 4. Compiling
+                biar kompiler = KC.Kompiler()
+                biar bytecode = kompiler.kompilasi(ast)
+                kembali bytecode
+
+            tangkap e
+                tulis("[Morph] Exception Compiler:")
+                jika handler.ada_error maka
+                    handler.cetak_laporan(konten)
+                akhir
+                tulis(e)
+                kembali nil
+            akhir
+
+        | Gagal(pesan) maka
+            tulis("Gagal membaca file: " + pesan)
+            kembali nil
+        akhir
+    akhir
+akhir
+
+# Entry Point
+fungsi utama() maka
+    biar app = MorphCLI()
+    app.jalankan()
+akhir
